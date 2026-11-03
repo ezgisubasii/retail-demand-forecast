@@ -80,6 +80,16 @@ Example response of `recommend_order("FOODS_3_002", on_hand=0, service_level=90)
 
 This item sold about 20 units a week, then had 8 weeks of zero sales, then sold again. The zeros were an empty shelf, not missing demand, and the tool flags this kind of case.
 
+## Scaling with PySpark on Databricks
+
+`databricks/01_spark_features.ipynb` moves data preparation and feature engineering to PySpark.
+
+1. The single store pipeline is rebuilt with `unpivot`, joins and window functions.
+2. The Spark output is checked against the pandas version and matches exactly (902,008 rows, 2,398,726 units sold, same rolling means on 2016-04-24).
+3. The same code then runs on all 10 stores and 3,049 items, which is 30,490 series and 33.4 million rows. The rolling features take about 20 seconds.
+
+Results are saved as Delta tables (`sales_long_all`, `features_all`).
+
 ## How to run
 
 ```
@@ -99,7 +109,9 @@ python src/inventory.py        # stock level backtest
 python src/build_artifacts.py  # save forecasts and stock levels for the server
 ```
 
-3. Add the server to any MCP client that supports stdio
+3. For the Spark version, upload `calendar.csv`, `sales_train_evaluation.csv` and `sell_prices.csv` to the Databricks volume `/Volumes/workspace/default/m5` and run the notebook in `databricks/`
+
+4. Add the server to any MCP client that supports stdio
 
 ```json
 {
@@ -122,5 +134,7 @@ src/
   inventory.py        quantile stock model vs classic formula
   build_artifacts.py  batch job for the server
   mcp_server.py       MCP tools
+databricks/
+  01_spark_features.ipynb  PySpark version of data preparation and features, all 10 stores
 ```
 
