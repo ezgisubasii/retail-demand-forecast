@@ -88,7 +88,9 @@ def make_training_set(cutoff_day: int, sales, price, calendar) -> pd.DataFrame:
 def train_model(train: pd.DataFrame) -> lgb.LGBMRegressor:
     """Train a LightGBM model on the training set."""
     model = lgb.LGBMRegressor(
-        objective="l1",  #optimizes absolute error, the same thing WAPE measures
+        #poisson predicts the mean, so daily forecasts add up to the right weekly and store totals
+        #(l1 predicts the median, which looked better on daily WAPE but was 25% too low in total)
+        objective="poisson",
         n_estimators=300,
         learning_rate=0.05,
         num_leaves=31,
@@ -111,28 +113,34 @@ def main():
         test = features_at(cutoff_day, sales, price, calendar)
 
         model = train_model(train)
-        lgbm_pred = model.predict(test[FEATURES])
+        test["lgbm"] = model.predict(test[FEATURES])
         #mean_28 on the cutoff day is exactly the baseline forecast
-        baseline_pred = test["mean_28"].fillna(0)
+        test["baseline"] = test["mean_28"].fillna(0)
 
-        results.append({
-            "cutoff": cutoff.date(),
-            "train_rows": len(train),
-            "baseline_wape": round(wape(test["sales"], baseline_pred), 3),
-            "lgbm_wape": round(wape(test["sales"], lgbm_pred), 3),
-            "baseline_mae": round(mae(test["sales"], baseline_pred), 3),
-            "lgbm_mae": round(mae(test["sales"], lgbm_pred), 3),
-        })
+        #Same forecasts summed to item x week and to the store total per day
+        test["week"] = (test["horizon"] - 1) // 7
+        weekly = test.groupby(["id", "week"], observed=True)[["sales", "lgbm", "baseline"]].sum()
+        store = test.groupby("date")[["sales", "lgbm", "baseline"]].sum()
+
+        for name in ["baseline", "lgbm"]:
+            results.append({
+                "cutoff": cutoff.date(),
+                "model": name,
+                "item_day_wape": round(wape(test["sales"], test[name]), 3),
+                "item_week_wape": round(wape(weekly["sales"], weekly[name]), 3),
+                "store_day_wape": round(wape(store["sales"], store[name]), 3),
+                "item_day_mae": round(mae(test["sales"], test[name]), 3),
+                #1.0 means the total forecast equals total sales
+                "total_vs_actual": round(test[name].sum() / test["sales"].sum(), 3),
+            })
         print("done:", cutoff.date())
 
+    pd.set_option("display.width", 200)
     results_df = pd.DataFrame(results)
-    print(results_df)
-
-    baseline_mean = results_df["baseline_wape"].mean()
-    lgbm_mean = results_df["lgbm_wape"].mean()
-    print(f"mean baseline wape: {baseline_mean:.1%}")
-    print(f"mean lgbm wape:     {lgbm_mean:.1%}")
-    print(f"improvement:        {(baseline_mean - lgbm_mean) / baseline_mean:.1%}")
+    print(results_df.to_string(index=False))
+    print()
+    print("Average over the 3 periods:")
+    print(results_df.groupby("model", sort=False).mean(numeric_only=True).round(3))
 
     #Which features the last model used the most
     importance = pd.Series(model.feature_importances_, index=FEATURES).sort_values(ascending=False)
