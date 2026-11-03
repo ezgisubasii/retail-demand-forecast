@@ -1,0 +1,9 @@
+pandas
+numpy
+pyarrow
+lightgbm
+scikit-learn
+matplotlib
+kaggle
+mcp[cli]
+jupyter
