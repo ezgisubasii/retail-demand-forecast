@@ -3,6 +3,7 @@ __pycache__/
 .ipynb_checkpoints/
 data/raw/*
 data/processed/*
+data/onboarding/
 !data/**/.gitkeep
 kaggle.json
 .env
