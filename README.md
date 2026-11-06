@@ -90,6 +90,31 @@ This item sold about 20 units a week, then had 8 weeks of zero sales, then sold 
 
 Results are saved as Delta tables (`sales_long_all`, `features_all`).
 
+## Retailer onboarding agent
+
+A new customer's data never arrives in our format. `skills/retailer-onboarding/SKILL.md` is an agent workflow that profiles the raw files, maps them to our data model, finds data problems and builds the standard table. The agent does the checks, and the analyst makes every decision about how to fix the data.
+
+The workflow uses the `retailer-onboarding` MCP server (`src/onboarding_server.py`).
+
+| Tool | What it does |
+|---|---|
+| `list_files` | Lists the files a retailer sent |
+| `profile_file` | Columns, guessed types, date formats, decimal commas, ranges, examples |
+| `check_mapping` | Applies a column mapping and returns conversion problems and data issues |
+| `build_standard_table` | Writes the data in our model format using the analyst's decisions |
+
+**Test case.** `src/make_sample_retailer.py` turns store TX_1 / FOODS_1 into a messy export with other column names, `dd.mm.yyyy` dates, decimal comma prices and five hidden problems. The checks find all of them.
+
+| Hidden problem | Found |
+|---|---|
+| 3 days missing from the export | `missing_days` 3, with the exact dates |
+| 60 rows exported twice | `duplicate_rows` 60 |
+| 25 returns as negative sales | `negative_sales` 25 |
+| 12 items without any price | `items_without_price` 12 |
+| 8 prices entered as 0 | `zero_or_negative_prices` 8 |
+
+The tools can only read files under `data/onboarding/<retailer>/`.
+
 ## How to run
 
 ```
@@ -119,10 +144,16 @@ python src/build_artifacts.py  # save forecasts and stock levels for the server
     "retail-forecast": {
       "command": "C:\\dev\\retail-forecast\\.venv\\Scripts\\python.exe",
       "args": ["C:\\dev\\retail-forecast\\src\\mcp_server.py"]
+    },
+    "retailer-onboarding": {
+      "command": "C:\\dev\\retail-forecast\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\dev\\retail-forecast\\src\\onboarding_server.py"]
     }
   }
 }
 ```
+
+5. For onboarding, run `python src/make_sample_retailer.py`, then ask the agent to follow `skills/retailer-onboarding/SKILL.md` for `retailer_x`
 
 ## Project structure
 
@@ -134,6 +165,11 @@ src/
   inventory.py        quantile stock model vs classic formula
   build_artifacts.py  batch job for the server
   mcp_server.py       MCP tools
+  make_sample_retailer.py  messy test export for onboarding
+  onboarding.py            profiling, mapping and data checks
+  onboarding_server.py     onboarding MCP tools
+skills/
+  retailer-onboarding/SKILL.md  agent workflow for a new retailer
 databricks/
   01_spark_features.ipynb  PySpark version of data preparation and features, all 10 stores
 ```
