@@ -85,12 +85,12 @@ def make_training_set(cutoff_day: int, sales, price, calendar) -> pd.DataFrame:
     return pd.concat(tables)
 
 
-def train_model(train: pd.DataFrame) -> lgb.LGBMRegressor:
+def train_model(train: pd.DataFrame, objective: str = "poisson") -> lgb.LGBMRegressor:
     """Train a LightGBM model on the training set."""
     model = lgb.LGBMRegressor(
         #poisson predicts the mean, so daily forecasts add up to the right weekly and store totals
         #(l1 predicts the median, which looked better on daily WAPE but was 25% too low in total)
-        objective="poisson",
+        objective=objective,
         n_estimators=300,
         learning_rate=0.05,
         num_leaves=31,

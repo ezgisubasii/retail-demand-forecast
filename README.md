@@ -115,6 +115,23 @@ The workflow uses the `retailer-onboarding` MCP server (`src/onboarding_server.p
 
 The tools can only read files under `data/onboarding/<retailer>/`.
 
+## Weekly pipeline with Airflow
+
+`dags/retail_forecast_dag.py` runs the pipeline every Monday at 06:00, before the weekly orders. Each task runs one step of `src/pipeline.py`.
+
+```
+prepare -> check_data -> evaluate -> gate -> publish
+```
+
+- `check_data` stops the run on duplicate rows, missing days or negative sales.
+- `evaluate` backtests the model on the latest 28 days and saves the metrics.
+- `gate` publishes only if the model beats the baseline at store level **and** the total forecast is within 15% of real sales.
+- `publish` writes the files the MCP server reads, so a failed gate leaves the last good forecasts in place.
+
+The model type is a DAG parameter, which makes the gate easy to test. The first run below uses the Poisson model and passes. The second uses the old L1 model, whose total forecast was 74% of real sales. The gate stops it and `publish` never runs. This is the same bias that was found by hand earlier, now caught automatically.
+
+![Airflow runs](docs/airflow_runs.png)
+
 ## How to run
 
 ```
@@ -155,6 +172,13 @@ python src/build_artifacts.py  # save forecasts and stock levels for the server
 
 5. For onboarding, run `python src/make_sample_retailer.py`, then ask the agent to follow `skills/retailer-onboarding/SKILL.md` for `retailer_x`
 
+6. For Airflow (Linux or WSL), install `apache-airflow==3.4.0` in its own environment, point `AIRFLOW__CORE__DAGS_FOLDER` to `dags/` and set `RETAIL_FORECAST_DIR` and `RETAIL_FORECAST_PYTHON` if the project or its Python live somewhere else
+
+```
+airflow dags test retail_forecast_weekly                                  # full run
+airflow dags test retail_forecast_weekly -c '{"model_objective": "l1"}'   # the gate stops this one
+```
+
 ## Project structure
 
 ```
@@ -168,6 +192,9 @@ src/
   make_sample_retailer.py  messy test export for onboarding
   onboarding.py            profiling, mapping and data checks
   onboarding_server.py     onboarding MCP tools
+  pipeline.py              pipeline steps and validation gate
+dags/
+  retail_forecast_dag.py   weekly Airflow DAG
 skills/
   retailer-onboarding/SKILL.md  agent workflow for a new retailer
 databricks/
